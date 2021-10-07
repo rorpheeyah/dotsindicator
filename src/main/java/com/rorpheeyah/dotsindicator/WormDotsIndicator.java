@@ -20,17 +20,32 @@ import static android.widget.LinearLayout.HORIZONTAL;
 
 import static com.rorpheeyah.dotsindicator.UiUtils.getThemePrimaryColor;
 
+import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.dynamicanimation.animation.FloatPropertyCompat;
 import androidx.dynamicanimation.animation.SpringAnimation;
 import androidx.dynamicanimation.animation.SpringForce;
+import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.ViewPager;
+import androidx.viewpager2.widget.ViewPager2;
 
+/*
+    __        __                   ____        _       ___           _ _           _
+    \ \      / /__  _ __ _ __ ___ |  _ \  ___ | |_ ___|_ _|_ __   __| (_) ___ __ _| |_ ___  _ __
+     \ \ /\ / / _ \| '__| '_ ` _ \| | | |/ _ \| __/ __|| || '_ \ / _` | |/ __/ _` | __/ _ \| '__|
+      \ V  V / (_) | |  | | | | | | |_| | (_) | |_\__ \| || | | | (_| | | (_| (_| | || (_) | |
+       \_/\_/ \___/|_|  |_| |_| |_|____/ \___/ \__|___/___|_| |_|\__,_|_|\___\__,_|\__\___/|_|
+ */
+
+/**
+ * @author Matt Rorpheeyah
+ */
 public class WormDotsIndicator extends FrameLayout {
-    private List<ImageView> strokeDots;
+    private final List<ImageView> strokeDots;
     private ImageView dotIndicatorView;
     private View dotIndicatorLayout;
     private ViewPager viewPager;
+    private ViewPager2 viewPager2;
 
     // Attributes
     private int dotsSize;
@@ -40,13 +55,14 @@ public class WormDotsIndicator extends FrameLayout {
     private int dotIndicatorColor;
     private int dotsStrokeColor;
 
-    private int horizontalMargin;
+    private final int horizontalMargin;
     private SpringAnimation dotIndicatorXSpring;
     private SpringAnimation dotIndicatorWidthSpring;
-    private LinearLayout strokeDotsLinearLayout;
+    private final LinearLayout strokeDotsLinearLayout;
 
-    private boolean dotsClickable;
+    private boolean dotsClickable, dotsFilled;
     private ViewPager.OnPageChangeListener pageChangedListener;
+    private ViewPager2.OnPageChangeCallback pageChangedListener2;
 
     public WormDotsIndicator(Context context) {
         this(context, null);
@@ -58,35 +74,38 @@ public class WormDotsIndicator extends FrameLayout {
 
     public WormDotsIndicator(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
-        strokeDots = new ArrayList<>();
-        strokeDotsLinearLayout = new LinearLayout(context);
-        LayoutParams linearParams = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        horizontalMargin = dpToPx(24);
+        strokeDots                  = new ArrayList<>();
+        strokeDotsLinearLayout      = new LinearLayout(context);
+        LayoutParams linearParams   = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+
+        horizontalMargin            = dpToPx(24);
         linearParams.setMargins(horizontalMargin, 0, horizontalMargin, 0);
         strokeDotsLinearLayout.setLayoutParams(linearParams);
         strokeDotsLinearLayout.setOrientation(HORIZONTAL);
         addView(strokeDotsLinearLayout);
 
-        dotsSize = dpToPx(16); // 16dp
-        dotsSpacing = dpToPx(4); // 4dp
-        dotsStrokeWidth = dpToPx(2); // 2dp
-        dotsCornerRadius = dotsSize / 2;
-        dotIndicatorColor = getThemePrimaryColor(context);
-        dotsStrokeColor = dotIndicatorColor;
-        dotsClickable = true;
+        dotsSize            = dpToPx(16);
+        dotsSpacing         = dpToPx(4);
+        dotsStrokeWidth     = dpToPx(2);
+        dotsCornerRadius    = dotsSize / 2;
+        dotIndicatorColor   = getThemePrimaryColor(context);
+        dotsStrokeColor     = dotIndicatorColor;
+        dotsClickable       = true;
 
         if (attrs != null) {
-            TypedArray a = getContext().obtainStyledAttributes(attrs, R.styleable.WormDotsIndicator);
+            TypedArray a        = getContext().obtainStyledAttributes(attrs, R.styleable.WormDotsIndicator);
 
             // Dots attributes
-            dotIndicatorColor = a.getColor(R.styleable.WormDotsIndicator_dotsColor, dotIndicatorColor);
-            dotsStrokeColor = a.getColor(R.styleable.WormDotsIndicator_dotsStrokeColor, dotIndicatorColor);
-            dotsSize = (int) a.getDimension(R.styleable.WormDotsIndicator_dotsSize, dotsSize);
-            dotsSpacing = (int) a.getDimension(R.styleable.WormDotsIndicator_dotsSpacing, dotsSpacing);
-            dotsCornerRadius = (int) a.getDimension(R.styleable.WormDotsIndicator_dotsCornerRadius, dotsSize / 2);
+            dotIndicatorColor   = a.getColor(R.styleable.WormDotsIndicator_dotsColor, dotIndicatorColor);
+            dotsStrokeColor     = a.getColor(R.styleable.WormDotsIndicator_dotsStrokeColor, dotIndicatorColor);
+            dotsSize            = (int) a.getDimension(R.styleable.WormDotsIndicator_dotsSize, dotsSize);
+            dotsSpacing         = (int) a.getDimension(R.styleable.WormDotsIndicator_dotsSpacing, dotsSpacing);
+            dotsCornerRadius    = (int) a.getDimension(R.styleable.WormDotsIndicator_dotsCornerRadius, (float) dotsSize / 2);
 
             // Spring dots attributes
-            dotsStrokeWidth = (int) a.getDimension(R.styleable.WormDotsIndicator_dotsStrokeWidth, dotsStrokeWidth);
+            dotsStrokeWidth     = (int) a.getDimension(R.styleable.WormDotsIndicator_dotsStrokeWidth, dotsStrokeWidth);
+
+            dotsFilled          = a.getBoolean(R.styleable.WormDotsIndicator_dots_filled, false);
 
             a.recycle();
         }
@@ -100,6 +119,7 @@ public class WormDotsIndicator extends FrameLayout {
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         refreshDots();
+        refreshDots2();
     }
 
     private void refreshDots() {
@@ -115,6 +135,24 @@ public class WormDotsIndicator extends FrameLayout {
                 removeDots(strokeDots.size() - viewPager.getAdapter().getCount());
             }
             setUpDotsAnimators();
+        } else {
+            Log.e(WormDotsIndicator.class.getSimpleName(), "You have to set an adapter to the view pager before !");
+        }
+    }
+
+    private void refreshDots2() {
+        if (dotIndicatorLayout == null) {
+            setUpDotIndicator();
+        }
+
+        if (viewPager2 != null && viewPager2.getAdapter() != null) {
+            // Check if we need to refresh the strokeDots count
+            if (strokeDots.size() < viewPager2.getAdapter().getItemCount()) {
+                addStrokeDots2(viewPager2.getAdapter().getItemCount() - strokeDots.size());
+            } else if (strokeDots.size() > viewPager2.getAdapter().getItemCount()) {
+                removeDots(strokeDots.size() - viewPager2.getAdapter().getItemCount());
+            }
+            setUpDotsAnimators2();
         } else {
             Log.e(WormDotsIndicator.class.getSimpleName(), "You have to set an adapter to the view pager before !");
         }
@@ -165,6 +203,23 @@ public class WormDotsIndicator extends FrameLayout {
         }
     }
 
+    private void addStrokeDots2(int count) {
+        for (int i = 0; i < count; i++) {
+            ViewGroup dot = buildDot(true);
+            final int finalI = i;
+            dot.setOnClickListener(new OnClickListener() {
+                @Override public void onClick(View v) {
+                    if (dotsClickable && viewPager2 != null && viewPager2.getAdapter() != null && finalI < viewPager2.getAdapter().getItemCount()) {
+                        viewPager2.setCurrentItem(finalI, true);
+                    }
+                }
+            });
+
+            strokeDots.add((ImageView) dot.findViewById(R.id.worm_dot));
+            strokeDotsLinearLayout.addView(dot);
+        }
+    }
+
     private ViewGroup buildDot(boolean stroke) {
         ViewGroup dot = (ViewGroup) LayoutInflater.from(getContext()).inflate(R.layout.worm_dot_layout, this, false);
         View dotImageView = dot.findViewById(R.id.worm_dot);
@@ -180,13 +235,15 @@ public class WormDotsIndicator extends FrameLayout {
         return dot;
     }
 
-    private void setUpDotBackground(boolean stroke, View dotImageView) {
+    private void setUpDotBackground(boolean stroke, @NonNull View dotImageView) {
         GradientDrawable dotBackground = (GradientDrawable) dotImageView.getBackground();
         if (stroke) {
             dotBackground.setStroke(dotsStrokeWidth, dotsStrokeColor);
+            if(dotsFilled) dotBackground.setColor(dotsStrokeColor);
         } else {
             dotBackground.setColor(dotIndicatorColor);
         }
+
         dotBackground.setCornerRadius(dotsCornerRadius);
     }
 
@@ -207,48 +264,71 @@ public class WormDotsIndicator extends FrameLayout {
         }
     }
 
+    private void setUpDotsAnimators2() {
+        if (viewPager2 != null && viewPager2.getAdapter() != null && viewPager2.getAdapter().getItemCount() > 0) {
+            if (pageChangedListener2 != null) {
+                viewPager2.unregisterOnPageChangeCallback(pageChangedListener2);
+            }
+            setUpOnPageChangedListener2();
+            viewPager2.registerOnPageChangeCallback(pageChangedListener2);
+        }
+    }
+
     private void setUpOnPageChangedListener() {
         pageChangedListener = new ViewPager.OnPageChangeListener() {
             @Override public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
-                int stepX = dotsSize + dotsSpacing * 2;
-                float xFinalPosition;
-                float widthFinalPosition;
-
-                if (positionOffset >= 0 && positionOffset < 0.1f) {
-                    xFinalPosition = horizontalMargin + position * stepX;
-                    widthFinalPosition = dotsSize;
-                } else if (positionOffset >= 0.1f && positionOffset <= 0.9f) {
-                    xFinalPosition = horizontalMargin + position * stepX;
-                    widthFinalPosition = dotsSize + stepX;
-                } else {
-                    xFinalPosition = horizontalMargin + (position + 1) * stepX;
-                    widthFinalPosition = dotsSize;
-                }
-
-                if (dotIndicatorXSpring.getSpring().getFinalPosition() != xFinalPosition) {
-                    dotIndicatorXSpring.getSpring().setFinalPosition(xFinalPosition);
-                }
-
-                if (dotIndicatorWidthSpring.getSpring().getFinalPosition() != widthFinalPosition) {
-                    dotIndicatorWidthSpring.getSpring().setFinalPosition(widthFinalPosition);
-                }
-
-                if (!dotIndicatorXSpring.isRunning()) {
-                    dotIndicatorXSpring.start();
-                }
-
-                if (!dotIndicatorWidthSpring.isRunning()) {
-                    dotIndicatorWidthSpring.start();
-                }
+                setDotIndicatorCurrent(position, positionOffset);
             }
 
-            @Override public void onPageSelected(int position) {
-            }
-
-            @Override public void onPageScrollStateChanged(int state) {
-            }
+            @Override public void onPageSelected(int position) {}
+            @Override public void onPageScrollStateChanged(int state) {}
         };
     }
+
+    private void setUpOnPageChangedListener2() {
+        pageChangedListener2 = new ViewPager2.OnPageChangeCallback() {
+            @Override public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
+                setDotIndicatorCurrent(position, positionOffset);
+            }
+
+            @Override public void onPageSelected(int position) {}
+            @Override public void onPageScrollStateChanged(int state) {}
+        };
+    }
+
+    private void setDotIndicatorCurrent(int position, float positionOffset){
+        int stepX = dotsSize + dotsSpacing * 2;
+        float xFinalPosition;
+        float widthFinalPosition;
+
+        if (positionOffset >= 0 && positionOffset < 0.1f) {
+            xFinalPosition = horizontalMargin + position * stepX;
+            widthFinalPosition = dotsSize;
+        } else if (positionOffset >= 0.1f && positionOffset <= 0.9f) {
+            xFinalPosition = horizontalMargin + position * stepX;
+            widthFinalPosition = dotsSize + stepX;
+        } else {
+            xFinalPosition = horizontalMargin + (position + 1) * stepX;
+            widthFinalPosition = dotsSize;
+        }
+
+        if (dotIndicatorXSpring.getSpring().getFinalPosition() != xFinalPosition) {
+            dotIndicatorXSpring.getSpring().setFinalPosition(xFinalPosition);
+        }
+
+        if (dotIndicatorWidthSpring.getSpring().getFinalPosition() != widthFinalPosition) {
+            dotIndicatorWidthSpring.getSpring().setFinalPosition(widthFinalPosition);
+        }
+
+        if (!dotIndicatorXSpring.isRunning()) {
+            dotIndicatorXSpring.start();
+        }
+
+        if (!dotIndicatorWidthSpring.isRunning()) {
+            dotIndicatorWidthSpring.start();
+        }
+    }
+
 
     private void setUpViewPager() {
         if (viewPager.getAdapter() != null) {
@@ -261,13 +341,21 @@ public class WormDotsIndicator extends FrameLayout {
         }
     }
 
+    private void setUpViewPager2() {
+        if (viewPager2.getAdapter() != null) {
+            viewPager2.getAdapter().registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+                @Override
+                public void onChanged() {
+                    super.onChanged();
+                    refreshDots2();
+                }
+            });
+        }
+    }
+
     private int dpToPx(int dp) {
         return (int) (getContext().getResources().getDisplayMetrics().density * dp);
     }
-
-    //*********************************************************
-    // Users Methods
-    //*********************************************************
 
     /**
      * Set the indicator dot color.
@@ -308,5 +396,11 @@ public class WormDotsIndicator extends FrameLayout {
         this.viewPager = viewPager;
         setUpViewPager();
         refreshDots();
+    }
+
+    public void setViewPager2(ViewPager2 viewPager2) {
+        this.viewPager2 = viewPager2;
+        setUpViewPager2();
+        refreshDots2();
     }
 }
